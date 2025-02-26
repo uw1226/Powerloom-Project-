@@ -1,0 +1,101 @@
+
+#include <iostream>
+#include <fstream>
+#include <sstream>
+#include <string>
+#include <map>
+#include <unistd.h> // for usleep
+
+using namespace std;
+
+map<string, long long> getMemInfo() {
+    map<string, long long> memInfoMap;
+    ifstream meminfo_file("/proc/meminfo");
+    string line;
+
+    while (getline(meminfo_file, line)) {
+        stringstream ss(line);
+        string key;
+        long long value;
+        string unit;
+        ss >> key >> value >> unit;
+        // Remove the colon from the key
+        key = key.substr(0, key.length() - 1);
+        memInfoMap[key] = value;
+    }
+    return memInfoMap;
+}
+
+struct CpuData {
+    long long user;
+    long long nice;
+    long long system;
+    long long idle;
+    long long iowait;
+    long long irq;
+    long long softirq;
+    long long steal;
+    long long guest;
+    long long guest_nice;
+
+    CpuData() : user(0), nice(0), system(0), idle(0), iowait(0), irq(0), softirq(0), steal(0), guest(0), guest_nice(0) {}
+};
+
+CpuData getCpuData() {
+    CpuData data;
+    ifstream stat_file("/proc/stat");
+    string line;
+    getline(stat_file, line); // Read the first line which starts with "cpu "
+
+    stringstream ss(line);
+    string cpu_label;
+    ss >> cpu_label >> data.user >> data.nice >> data.system >> data.idle >> data.iowait >> data.irq >> data.softirq >> data.steal >> data.guest >> data.guest_nice;
+    return data;
+}
+
+int main() {
+    // Memory Information
+    map<string, long long> memInfo = getMemInfo();
+
+    long long memTotal = memInfo["MemTotal"];
+    long long memFree = memInfo["MemFree"];
+    long long memAvailable = memInfo["MemAvailable"]; // Available memory is usually a better indicator of usable memory
+    long long swapTotal = memInfo["SwapTotal"];
+    long long swapFree = memInfo["SwapFree"];
+
+    long long memUsed = memTotal - memAvailable; // Using MemAvailable for a more accurate "used" calculation
+    long long swapUsed = swapTotal - swapFree;
+
+    cout << "Memory Information:" << endl;
+    cout << "  Total RAM: " << memTotal / 1024 << " MB" << endl;
+    cout << "  Available RAM: " << memAvailable / 1024 << " MB" << endl;
+    cout << "  Used RAM: " << memUsed / 1024 << " MB" << endl;
+    cout << "  Total Swap: " << swapTotal / 1024 << " MB" << endl;
+    cout << "  Used Swap: " << swapUsed / 1024 << " MB" << endl;
+    cout << "  Free Swap: " << swapFree / 1024 << " MB" << endl;
+    cout << endl;
+
+    // CPU Usage
+    CpuData prevData = getCpuData();
+    usleep(1000000); // Sleep for 1 second (1,000,000 microseconds)
+    CpuData currentData = getCpuData();
+
+    long long prevIdle = prevData.idle + prevData.iowait;
+    long long currentIdle = currentData.idle + currentData.iowait;
+
+    long long prevNonIdle = prevData.user + prevData.nice + prevData.system + prevData.irq + prevData.softirq + prevData.steal;
+    long long currentNonIdle = currentData.user + currentData.nice + currentData.system + currentData.irq + currentData.softirq + currentData.steal;
+
+    long long prevTotal = prevIdle + prevNonIdle;
+    long long currentTotal = currentIdle + currentNonIdle;
+
+    double totald = currentTotal - prevTotal;
+    double idled = currentIdle - prevIdle;
+
+    double cpuUsage = (100.0 * (totald - idled)) / totald;
+
+    cout << "CPU Information:" << endl;
+    cout << "  CPU Usage: " << cpuUsage << "%" << endl;
+
+    return 0;
+}
